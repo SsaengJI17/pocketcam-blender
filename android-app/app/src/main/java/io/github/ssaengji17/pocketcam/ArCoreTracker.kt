@@ -4,6 +4,8 @@ import android.app.Activity
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import com.google.ar.core.ArCoreApk
 import com.google.ar.core.Camera
@@ -17,7 +19,9 @@ import javax.microedition.khronos.opengles.GL10
 
 data class ArCoreStatus(
     val availability: String,
-    val tracking: String,
+    val surfaceReady: Boolean = false,
+    val sessionResumed: Boolean = false,
+    val tracking: String = "lost",
     val error: String? = null,
 )
 
@@ -27,12 +31,20 @@ class ArCoreTracker(
     private val listener: (PosePacket) -> Unit,
     private val onStatus: (ArCoreStatus) -> Unit,
 ) {
+    private val mainHandler = Handler(Looper.getMainLooper())
     private val renderer = ArCoreRenderer()
     private var session: Session? = null
     private var installRequested = false
+    private var startRequested = false
 
     @Volatile
     private var running = false
+
+    @Volatile
+    private var sessionResumed = false
+
+    @Volatile
+    private var lastTracking = "lost"
 
     init {
         surfaceView.preserveEGLContextOnPause = true
@@ -49,16 +61,23 @@ class ArCoreTracker(
 
     fun start(): Boolean {
         val availability = checkAvailability()
-        onStatus(ArCoreStatus(availabilityToLabel(availability), "lost"))
+        val availabilityText = availabilityToLabel(availability)
         Log.d(TAG, "Starting ARCore tracker; availability=${availability.name}")
+        emitStatus(availability = availabilityText)
 
         if (availability.isTransient) {
-            onStatus(ArCoreStatus(availabilityToLabel(availability), "lost", "ARCore availability is still checking"))
+            emitStatus(
+                availability = availabilityText,
+                error = "ARCore availability is still checking",
+            )
             return false
         }
 
         if (!availability.isSupported) {
-            onStatus(ArCoreStatus(availabilityToLabel(availability), "lost", "ARCore is not supported on this device"))
+            emitStatus(
+                availability = availabilityText,
+                error = "ARCore is not supported on this device",
+            )
             return false
         }
 
@@ -66,7 +85,10 @@ class ArCoreTracker(
             when (ArCoreApk.getInstance().requestInstall(activity, !installRequested)) {
                 ArCoreApk.InstallStatus.INSTALL_REQUESTED -> {
                     installRequested = true
-                    onStatus(ArCoreStatus(availabilityToLabel(availability), "lost", "Install or update Google Play Services for AR, then start again"))
+                    emitStatus(
+                        availability = availabilityText,
+                        error = "Install or update Google Play Services for AR, then start again",
+                    )
                     return false
                 }
 
@@ -80,36 +102,47 @@ class ArCoreTracker(
                 lightEstimationMode = Config.LightEstimationMode.DISABLED
             }
             arSession.configure(config)
+
+            startRequested = true
+            running = false
+            sessionResumed = false
+            lastTracking = "limited"
             renderer.session = arSession
             renderer.resetFrameState()
-            Log.d(TAG, "ARCore session configured; resuming GLSurfaceView before Session.resume")
+
+            Log.d(TAG, "ARCore session configured on main thread")
+            Log.d(TAG, "Calling GLSurfaceView.onResume before Session.resume")
             surfaceView.onResume()
-            renderer.requestResumeWhenSurfaceReady()
+
+            emitStatus(availability = "available")
+            mainHandler.post { resumeSessionIfSurfaceReady() }
             return true
         } catch (exception: UnavailableException) {
-            reportStartupFailure(exception)
-        } catch (exception: CameraNotAvailableException) {
             reportStartupFailure(exception)
         } catch (exception: RuntimeException) {
             reportStartupFailure(exception)
         }
 
-        running = false
         return false
     }
 
     fun stop() {
         Log.d(TAG, "Stopping ARCore tracker")
+        startRequested = false
         running = false
-        renderer.cancelPendingResume()
-        surfaceView.onPause()
-        try {
-            session?.pause()
-        } catch (exception: RuntimeException) {
-            Log.w(TAG, "Ignoring ARCore pause failure", exception)
+
+        if (sessionResumed) {
+            try {
+                session?.pause()
+            } catch (exception: RuntimeException) {
+                Log.w(TAG, "Ignoring ARCore pause failure", exception)
+            }
         }
+
+        sessionResumed = false
+        surfaceView.onPause()
         renderer.session = null
-        onStatus(ArCoreStatus(availabilityLabel, "lost"))
+        emitStatus(availability = availabilityLabel, tracking = "lost")
     }
 
     fun close() {
@@ -118,15 +151,91 @@ class ArCoreTracker(
         session = null
     }
 
+    private fun resumeSessionIfSurfaceReady() {
+        if (!startRequested || sessionResumed) {
+            return
+        }
+
+        if (!renderer.isSurfaceReady) {
+            Log.d(TAG, "Waiting for ARCore preview surface before Session.resume; surface=${renderer.surfaceSizeLabel}")
+            emitStatus(availability = "available")
+            return
+        }
+
+        val arSession = session ?: return
+
+        try {
+            Log.d(TAG, "Calling ARCore Session.resume on main thread; surface=${renderer.surfaceSizeLabel}")
+            arSession.resume()
+            sessionResumed = true
+            running = true
+            renderer.markTextureNeedsAttach()
+            emitStatus(availability = "available")
+            Log.d(TAG, "ARCore Session.resume completed")
+        } catch (exception: UnavailableException) {
+            reportStartupFailure(exception)
+        } catch (exception: CameraNotAvailableException) {
+            reportStartupFailure(exception)
+        } catch (exception: RuntimeException) {
+            reportStartupFailure(exception)
+        }
+    }
+
     private fun checkAvailability(): ArCoreApk.Availability {
         return ArCoreApk.getInstance().checkAvailability(activity)
     }
 
     private fun reportStartupFailure(exception: Exception) {
         Log.e(TAG, "ARCore startup failed", exception)
+        startRequested = false
         running = false
-        renderer.cancelPendingResume()
-        onStatus(ArCoreStatus(availabilityLabel, "lost", SENSOR_ACCESS_ERROR))
+        sessionResumed = false
+        emitStatus(
+            availability = availabilityLabel,
+            tracking = "lost",
+            error = formatExceptionForUi(exception),
+        )
+    }
+
+    private fun formatExceptionForUi(exception: Exception): String {
+        val message = exception.message ?: "No exception message"
+        val detail = "${exception.javaClass.name}: $message"
+        return if (isSensorQueueFailure(exception)) {
+            "$SENSOR_ACCESS_ERROR $detail"
+        } else {
+            detail
+        }
+    }
+
+    private fun isSensorQueueFailure(exception: Exception): Boolean {
+        var current: Throwable? = exception
+        while (current != null) {
+            val message = current.message.orEmpty()
+            if (
+                message.contains("Failed to register sensor to queue", ignoreCase = true) ||
+                message.contains("register sensor", ignoreCase = true)
+            ) {
+                return true
+            }
+            current = current.cause
+        }
+        return false
+    }
+
+    private fun emitStatus(
+        availability: String,
+        tracking: String = lastTracking,
+        error: String? = null,
+    ) {
+        onStatus(
+            ArCoreStatus(
+                availability = availability,
+                surfaceReady = renderer.isSurfaceReady,
+                sessionResumed = sessionResumed,
+                tracking = tracking,
+                error = error,
+            ),
+        )
     }
 
     private fun availabilityToLabel(availability: ArCoreApk.Availability): String {
@@ -172,14 +281,25 @@ class ArCoreTracker(
         @Volatile
         var session: Session? = null
 
+        @Volatile
+        private var surfaceCreated = false
+
+        @Volatile
+        private var viewportWidth = 0
+
+        @Volatile
+        private var viewportHeight = 0
+
         private var cameraTextureId = 0
         private var textureAttached = false
         private var lastFrameTimestamp = 0L
-        private var viewportWidth = 1
-        private var viewportHeight = 1
         private var viewportChanged = false
-        private var surfaceCreated = false
-        private var resumeRequested = false
+
+        val isSurfaceReady: Boolean
+            get() = surfaceCreated && viewportWidth > 1 && viewportHeight > 1
+
+        val surfaceSizeLabel: String
+            get() = "${viewportWidth}x${viewportHeight}"
 
         fun resetFrameState() {
             textureAttached = false
@@ -187,16 +307,8 @@ class ArCoreTracker(
             viewportChanged = true
         }
 
-        fun requestResumeWhenSurfaceReady() {
-            resumeRequested = true
-            Log.d(TAG, "ARCore Session.resume requested; waiting for GLSurfaceView surface")
-            surfaceView.queueEvent {
-                resumeSessionIfSurfaceReady()
-            }
-        }
-
-        fun cancelPendingResume() {
-            resumeRequested = false
+        fun markTextureNeedsAttach() {
+            textureAttached = false
         }
 
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
@@ -205,22 +317,23 @@ class ArCoreTracker(
             surfaceCreated = true
             GLES20.glClearColor(0f, 0f, 0f, 1f)
             Log.d(TAG, "GLSurfaceView surface created")
-            resumeSessionIfSurfaceReady()
+            notifySurfaceStateChanged()
         }
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
-            viewportWidth = width.coerceAtLeast(1)
-            viewportHeight = height.coerceAtLeast(1)
+            viewportWidth = width.coerceAtLeast(0)
+            viewportHeight = height.coerceAtLeast(0)
             viewportChanged = true
             GLES20.glViewport(0, 0, viewportWidth, viewportHeight)
+            Log.d(TAG, "GLSurfaceView surface changed: ${surfaceSizeLabel}")
+            notifySurfaceStateChanged()
         }
 
         override fun onDrawFrame(gl: GL10?) {
             GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT or GLES20.GL_DEPTH_BUFFER_BIT)
 
             val arSession = session ?: return
-            if (!running) {
-                resumeSessionIfSurfaceReady()
+            if (!running || !sessionResumed) {
                 return
             }
 
@@ -248,13 +361,27 @@ class ArCoreTracker(
                 lastFrameTimestamp = frame.timestamp
                 val camera = frame.camera
                 val tracking = trackingToProtocol(camera.trackingState)
-                onStatus(ArCoreStatus("available", tracking))
+                lastTracking = tracking
+                onStatus(
+                    ArCoreStatus(
+                        availability = "available",
+                        surfaceReady = isSurfaceReady,
+                        sessionResumed = sessionResumed,
+                        tracking = tracking,
+                    ),
+                )
                 listener(posePacketFromCamera(camera))
             } catch (exception: CameraNotAvailableException) {
-                onStatus(ArCoreStatus(availabilityLabel, "lost", exception.message ?: exception.javaClass.simpleName))
-                running = false
+                mainHandler.post { reportStartupFailure(exception) }
             } catch (exception: RuntimeException) {
-                onStatus(ArCoreStatus(availabilityLabel, "lost", exception.message ?: exception.javaClass.simpleName))
+                mainHandler.post { reportStartupFailure(exception) }
+            }
+        }
+
+        private fun notifySurfaceStateChanged() {
+            mainHandler.post {
+                emitStatus(availability = availabilityLabel)
+                resumeSessionIfSurfaceReady()
             }
         }
 
@@ -267,34 +394,6 @@ class ArCoreTracker(
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_S, GLES20.GL_CLAMP_TO_EDGE)
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
             return textureIds[0]
-        }
-
-        private fun resumeSessionIfSurfaceReady() {
-            if (!resumeRequested || !surfaceCreated) {
-                return
-            }
-
-            val arSession = session ?: return
-
-            try {
-                if (cameraTextureId == 0) {
-                    cameraTextureId = createExternalTexture()
-                    textureAttached = false
-                }
-
-                Log.d(TAG, "Calling ARCore Session.resume after surface creation")
-                arSession.resume()
-                running = true
-                resumeRequested = false
-                onStatus(ArCoreStatus("available", "limited"))
-                Log.d(TAG, "ARCore Session.resume completed")
-            } catch (exception: UnavailableException) {
-                reportStartupFailure(exception)
-            } catch (exception: CameraNotAvailableException) {
-                reportStartupFailure(exception)
-            } catch (exception: RuntimeException) {
-                reportStartupFailure(exception)
-            }
         }
     }
 

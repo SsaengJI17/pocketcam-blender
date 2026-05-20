@@ -38,6 +38,8 @@ class MainActivity : Activity() {
     private lateinit var stopButton: Button
     private lateinit var sensorStatus: TextView
     private lateinit var arCoreStatus: TextView
+    private lateinit var surfaceStatus: TextView
+    private lateinit var sessionStatus: TextView
     private lateinit var trackingStatus: TextView
     private lateinit var sendingStatus: TextView
     private lateinit var packetsSentStatus: TextView
@@ -47,6 +49,8 @@ class MainActivity : Activity() {
     private var packetsSent = 0L
     private var lastError = "None"
     private var arCoreAvailability = "checking"
+    private var arCoreSurfaceReady = false
+    private var arCoreSessionResumed = false
     private var arCoreTracking = "lost"
     private var pendingArCoreStart = false
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -55,7 +59,12 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
 
         arCoreSurfaceView = GLSurfaceView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(1, 1)
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                dpToPx(320),
+            ).apply {
+                setMargins(0, dpToPx(8), 0, dpToPx(16))
+            }
         }
 
         poseSender = UdpPoseSender(
@@ -89,9 +98,11 @@ class MainActivity : Activity() {
             onStatus = { status ->
                 runOnUiThread {
                     arCoreAvailability = status.availability
+                    arCoreSurfaceReady = status.surfaceReady
+                    arCoreSessionResumed = status.sessionResumed
                     arCoreTracking = status.tracking
                     status.error?.let { lastError = it }
-                    if (status.error == ARCORE_SENSOR_ACCESS_ERROR) {
+                    if (status.error != null && selectedMode == TrackingMode.ARCORE_6DOF) {
                         poseSender.stop()
                     }
                     updateStatus()
@@ -150,18 +161,22 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun buildContentView(): ScrollView {
-        val content = LinearLayout(this).apply {
+    private fun buildContentView(): LinearLayout {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
             layoutParams = ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.MATCH_PARENT,
             )
         }
 
-        content.addView(title("PocketCam"))
-        content.addView(label("Tracking mode"))
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 32, 32, 0)
+        }
+
+        header.addView(title("PocketCam"))
+        header.addView(label("Tracking mode"))
         modeGroup = RadioGroup(this).apply {
             orientation = RadioGroup.VERTICAL
             addView(
@@ -191,7 +206,19 @@ class MainActivity : Activity() {
                 }
             }
         }
-        content.addView(modeGroup)
+        header.addView(modeGroup)
+        header.addView(label("ARCore preview"))
+        header.addView(arCoreSurfaceView)
+        root.addView(header)
+
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 0, 32, 32)
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            )
+        }
 
         content.addView(label("Target host"))
         hostInput = EditText(this).apply {
@@ -229,21 +256,31 @@ class MainActivity : Activity() {
 
         sensorStatus = statusLine()
         arCoreStatus = statusLine()
+        surfaceStatus = statusLine()
+        sessionStatus = statusLine()
         trackingStatus = statusLine()
         sendingStatus = statusLine()
         packetsSentStatus = statusLine()
         lastErrorStatus = statusLine()
         content.addView(sensorStatus)
         content.addView(arCoreStatus)
+        content.addView(surfaceStatus)
+        content.addView(sessionStatus)
         content.addView(trackingStatus)
         content.addView(sendingStatus)
         content.addView(packetsSentStatus)
         content.addView(lastErrorStatus)
-        content.addView(arCoreSurfaceView)
 
-        return ScrollView(this).apply {
+        val scrollView = ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            )
             addView(content)
         }
+        root.addView(scrollView)
+        return root
     }
 
     private fun startSending() {
@@ -342,6 +379,8 @@ class MainActivity : Activity() {
         }
         sensorStatus.text = "Rotation sensor availability: ${if (sensorTracker.isAvailable) "available" else "unavailable"}"
         arCoreStatus.text = "ARCore availability: $arCoreAvailability"
+        surfaceStatus.text = "ARCore surface ready: ${if (arCoreSurfaceReady) "yes" else "no"}"
+        sessionStatus.text = "ARCore session resumed: ${if (arCoreSessionResumed) "yes" else "no"}"
         trackingStatus.text = "Tracking mode/state: $modeText / $trackingText"
         sendingStatus.text = "Sending state: ${if (poseSender.isSending) "sending" else "stopped"}"
         packetsSentStatus.text = "Packets sent: $packetsSent"
@@ -378,6 +417,10 @@ class MainActivity : Activity() {
             setPadding(0, 8, 0, 8)
         }
 
+    private fun dpToPx(value: Int): Int {
+        return (value * resources.displayMetrics.density).toInt()
+    }
+
     private companion object {
         private const val DEFAULT_HOST = "127.0.0.1"
         private const val DEFAULT_PORT = 8765
@@ -386,6 +429,5 @@ class MainActivity : Activity() {
         private const val CAMERA_PERMISSION_REQUEST = 2001
         private const val SENSOR_RELEASE_DELAY_MS = 150L
         private const val TAG = "PocketCamMain"
-        private const val ARCORE_SENSOR_ACCESS_ERROR = "ARCore failed to access device sensors."
     }
 }

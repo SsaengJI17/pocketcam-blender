@@ -12,7 +12,8 @@ This folder contains the Android sender MVP with Rotation Sensor mode and ARCore
 - Defaults to host `127.0.0.1` and port `8765`.
 - Provides editable host and port fields.
 - Provides a mode selector for Rotation Sensor mode and ARCore 6DoF mode.
-- Shows sensor availability, ARCore availability, tracking state, sending state, packets sent, and the last error.
+- Shows a visible ARCore preview surface in the app.
+- Shows sensor availability, ARCore availability, surface readiness, session resume state, tracking state, sending state, packets sent, and the last error.
 
 This MVP does not include binary protocol support, TCP/WebSocket transport, smoothing, recording, or take management.
 
@@ -71,6 +72,17 @@ The packet counter should increase in the app, and the Blender receiver should s
 4. Select `ARCore 6DoF mode`.
 5. Start the Blender receiver and set the app host/port.
 6. Tap `Start Sending`.
+
+The app shows a visible ARCore preview area below the tracking mode selector. This preview is intentionally large enough for ARCore to create a normal camera surface rather than a hidden 1x1 surface.
+
+The ARCore status lines show:
+
+- `ARCore availability`
+- `ARCore surface ready`
+- `ARCore session resumed`
+- `Tracking mode/state`
+
+If startup fails, `Last error` shows the exception class and message. Known native sensor queue failures are prefixed with `ARCore failed to access device sensors.`
 
 In ARCore mode, packets include:
 

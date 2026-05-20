@@ -250,3 +250,36 @@ Fix ARCore startup failure from logcat: `Failed to register sensor to queue 0`, 
 ### Next recommended action
 
 - Install the debug APK on the ARCore device, switch to ARCore 6DoF mode, and verify logcat no longer reports `Failed to register sensor to queue 0`.
+
+---
+
+## 2026-05-20 21:13 KST - Codex
+
+### Request
+
+Refactor ARCore mode after the hidden 1x1 `GLSurfaceView` still caused `Failed to register sensor to queue 0`; use a real visible AR preview and a more standard ARCore lifecycle.
+
+### Work completed
+
+- Replaced the hidden 1x1 ARCore `GLSurfaceView` with a visible preview area in the Android UI.
+- Moved the ARCore preview near the top of the app below the mode selector with match-width layout and 320dp height.
+- Refactored ARCore startup so `Session` is created/configured on the main thread.
+- Changed startup ordering to call `GLSurfaceView.onResume()` first, then call `Session.resume()` on the main thread only after the preview surface reports a real size.
+- Removed GL-thread resume attempts from `onDrawFrame`; the GL thread now handles texture attachment, display geometry, `session.update()`, and pose extraction.
+- Added UI status for ARCore availability, surface readiness, session resumed state, and tracking state.
+- Improved ARCore failure reporting so `Last error` includes the exception class/message and prefixes known sensor queue failures with `ARCore failed to access device sensors.`
+- Updated `android-app/README.md` to document the visible AR preview and ARCore status lines.
+
+### Verification
+
+- Ran `.\gradlew.bat assembleDebug` from `android-app/`.
+- Confirmed `BUILD SUCCESSFUL in 1s`.
+
+### Known issues
+
+- Physical ARCore device runtime validation is still required to confirm the visible preview and lifecycle refactor resolve the sensor queue failure.
+- `defaultDisplay` deprecation warning remains during Android compile.
+
+### Next recommended action
+
+- Install the debug APK on the ARCore device, start ARCore 6DoF mode, and confirm the preview surface is larger than 1x1 and `Session.resume()` no longer fails with `Failed to register sensor to queue 0`.
