@@ -5,11 +5,13 @@ from typing import Optional, Tuple
 
 
 RotationXYZW = Tuple[float, float, float, float]
+PositionXYZ = Tuple[float, float, float]
 
 
 @dataclass(frozen=True)
 class Pose:
     rotation_xyzw: RotationXYZW
+    position_xyz: Optional[PositionXYZ]
     received_at: float
     timestamp: Optional[float]
     mode: Optional[str]
@@ -53,6 +55,7 @@ class PoseState:
     def set_latest_pose(
         self,
         rotation_xyzw: RotationXYZW,
+        position_xyz: Optional[PositionXYZ],
         timestamp: Optional[float],
         mode: Optional[str],
         tracking: Optional[str],
@@ -60,6 +63,7 @@ class PoseState:
         with self._lock:
             self._latest_pose = Pose(
                 rotation_xyzw=rotation_xyzw,
+                position_xyz=position_xyz,
                 received_at=time.time(),
                 timestamp=timestamp,
                 mode=mode,

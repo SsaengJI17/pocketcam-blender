@@ -51,11 +51,14 @@ It provides a Blender 4.x add-on that:
 - Starts and stops a UDP server on port `8765`.
 - Receives UTF-8 JSON pose packets.
 - Parses protocol v1 quaternion rotations in `[x, y, z, w]` order.
+- Parses optional protocol v1 positions in `[x, y, z]` order.
 - Stores only the latest valid pose.
 - Applies the latest rotation to the active scene camera.
+- Applies incoming position to the active scene camera when present.
+- Provides a position scale setting and Recenter button for ARCore 6DoF tests.
 - Adds controls under `View3D > Sidebar > PocketCam`.
 
-For Version 0.1.0, incoming quaternions are treated as Blender-space rotations. Android and ARCore coordinate conversion are intentionally left for a later phase.
+For Version 0.2.0, ARCore positions are converted with a minimal `[x, y, z] -> [x, -z, y]` basis mapping before scale and recenter are applied. Incoming quaternions are still treated as Blender-space rotations until device calibration refines the conversion.
 
 ### Install the add-on for development
 
@@ -126,6 +129,15 @@ Note: the current sender MVP uses UDP, while `adb reverse` forwards TCP ports. I
 Add ARCore tracking and stream camera translation plus quaternion rotation.
 
 This turns the phone into a true handheld virtual camera.
+
+The ARCore 6DoF MVP keeps the existing UDP transport and adds a mode selector in the Android app:
+
+- Rotation Sensor mode continues to stream rotation-only packets.
+- ARCore 6DoF mode starts an ARCore session, reads the camera pose each frame, and streams `mode: "arcore"` packets with `position`, `rotation`, and `tracking`.
+- The Blender add-on applies rotation-only packets as before and applies position when the packet includes it.
+- The PocketCam sidebar exposes `Position Scale` and `Recenter` controls for local origin calibration.
+
+Physical ARCore device runtime validation is still required after installing the debug APK on a supported Android device.
 
 ### Phase 4: Production tools
 
