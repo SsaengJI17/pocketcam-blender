@@ -40,6 +40,16 @@ class UdpPoseSender(
     }
 
     fun send(rotation: RotationQuaternion) {
+        send(
+            PosePacket(
+                mode = "rotation",
+                rotation = rotation,
+                tracking = "normal",
+            ),
+        )
+    }
+
+    fun send(packet: PosePacket) {
         if (!sending.get()) {
             return
         }
@@ -49,7 +59,7 @@ class UdpPoseSender(
 
         val host = targetHost
         val port = targetPort
-        val payload = rotation.toPoseJson(System.currentTimeMillis() / 1000.0).toByteArray(Charsets.UTF_8)
+        val payload = packet.toPoseJson(System.currentTimeMillis() / 1000.0).toByteArray(Charsets.UTF_8)
 
         executor.execute {
             if (!sending.get()) {

@@ -180,3 +180,41 @@ Fix GitHub issue #3 by replacing unresolved Android Kotlin `singleLine()` calls,
 ### Next recommended action
 
 - Open a pull request from `fix/android-singleline` into `main` and keep it unmerged until reviewed.
+
+---
+
+## 2026-05-20 19:04 KST - Codex
+
+### Request
+
+Implement Version 0.2.0 ARCore 6DoF MVP on branch `feature/arcore-6dof-mvp`, keep UDP transport, update Android and Blender support, verify builds, and do not merge into `main`.
+
+### Work completed
+
+- Added ARCore SDK support to the Android app with camera permission, optional ARCore manifest metadata, and AndroidX Gradle property support.
+- Added Android mode selection between Rotation Sensor mode and ARCore 6DoF mode.
+- Added ARCore session/frame tracking through a `GLSurfaceView` renderer and UDP packets containing `mode: "arcore"`, `position`, `rotation`, and `tracking`.
+- Preserved existing Rotation Vector Sensor mode and UDP transport.
+- Extended the Blender protocol parser/state/receiver to accept optional `position`.
+- Applied incoming position to the active camera when present while keeping rotation-only packets working.
+- Added Blender `Position Scale` and `Recenter` controls.
+- Added a minimal ARCore-to-Blender position conversion layer with TODO notes for later calibration refinement.
+- Updated `README.md`, `docs/protocol.md`, `android-app/README.md`, and `blender-addon/README.md`.
+
+### Verification
+
+- Ran `.\gradlew.bat assembleDebug` from `android-app/` and confirmed `BUILD SUCCESSFUL in 3s`.
+- Ran Python syntax compilation for Blender add-on modules and `scripts/send_test_pose.py`.
+- Ran a parser smoke test for an ARCore packet with `position`.
+- Ran a localhost UDP receiver smoke test for an ARCore packet and confirmed latest pose stores rotation and position.
+
+### Known issues
+
+- Physical ARCore device runtime behavior was not tested.
+- Manual Blender UI/runtime behavior was not tested in Blender.
+- ARCore/Android rotation coordinate conversion remains minimal and needs real-device calibration.
+- UDP remains the only transport, so `adb reverse tcp:8765 tcp:8765` still does not forward current packets.
+
+### Next recommended action
+
+- Open a pull request from `feature/arcore-6dof-mvp` into `main`, then test on an ARCore-supported Android device with Blender running.

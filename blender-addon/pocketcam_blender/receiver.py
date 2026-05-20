@@ -66,7 +66,7 @@ class UDPReceiver:
         try:
             text = data.decode("utf-8")
             packet = json.loads(text)
-            rotation_xyzw, timestamp, mode, tracking = parse_pose_packet(packet)
+            rotation_xyzw, position_xyz, timestamp, mode, tracking = parse_pose_packet(packet)
         except UnicodeDecodeError:
             self._state.mark_invalid("packet is not valid UTF-8")
             return
@@ -77,4 +77,10 @@ class UDPReceiver:
             self._state.mark_invalid(str(exc))
             return
 
-        self._state.set_latest_pose(rotation_xyzw, timestamp=timestamp, mode=mode, tracking=tracking)
+        self._state.set_latest_pose(
+            rotation_xyzw,
+            position_xyz=position_xyz,
+            timestamp=timestamp,
+            mode=mode,
+            tracking=tracking,
+        )
