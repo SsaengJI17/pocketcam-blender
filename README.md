@@ -42,6 +42,44 @@ protocol/          Pose message schema and protocol notes
 scripts/           Local test tools and development helpers
 ```
 
+## Blender Receiver MVP
+
+The first working MVP lives in `blender-addon/pocketcam_blender`.
+
+It provides a Blender 4.x add-on that:
+
+- Starts and stops a UDP server on port `8765`.
+- Receives UTF-8 JSON pose packets.
+- Parses protocol v1 quaternion rotations in `[x, y, z, w]` order.
+- Stores only the latest valid pose.
+- Applies the latest rotation to the active scene camera.
+- Adds controls under `View3D > Sidebar > PocketCam`.
+
+For Version 0.1.0, incoming quaternions are treated as Blender-space rotations. Android and ARCore coordinate conversion are intentionally left for a later phase.
+
+### Install the add-on for development
+
+1. Open Blender 4.x.
+2. Copy `blender-addon/pocketcam_blender` into Blender's user add-ons directory.
+   - Windows example: `%APPDATA%\Blender Foundation\Blender\4.0\scripts\addons\pocketcam_blender`
+3. Open `Edit > Preferences > Add-ons`.
+4. Search for `PocketCam Blender Receiver`.
+5. Enable the add-on.
+
+### Send test pose packets
+
+With a Blender scene open and the PocketCam server started from the sidebar, run:
+
+```bash
+python scripts/send_test_pose.py --host 127.0.0.1 --port 8765 --duration 10
+```
+
+To send one identity rotation packet:
+
+```bash
+python scripts/send_test_pose.py --once
+```
+
 ## Target feature set
 
 - Android rotation-only tracking using Rotation Vector Sensor.
