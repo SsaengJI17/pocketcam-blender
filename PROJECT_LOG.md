@@ -116,3 +116,39 @@ Implement the focused Version 0.1.0 Blender Receiver MVP from `AGENTS.md`.
 ### Next recommended action
 
 Open Blender 4.x, enable the add-on, start the server from the PocketCam sidebar, and verify camera rotation with `scripts/send_test_pose.py`.
+
+---
+
+## 2026-05-20 KST - Codex
+
+### Request
+
+Implement the Version 0.2.0 Android Rotation Sender MVP and push it to a new feature branch.
+
+### Work completed
+
+- Added a native Kotlin Android project under `android-app/`.
+- Added Rotation Vector Sensor tracking and conversion from Android `[w, x, y, z]` quaternion output to protocol v1 `[x, y, z, w]`.
+- Added UDP UTF-8 JSON pose packet sending with default target `127.0.0.1:8765`.
+- Added editable host and port fields, Start Sending and Stop Sending buttons, and basic status readouts.
+- Added `android-app/README.md` with Android Studio build, Blender receiver, USB debugging, ADB reverse, and Wi-Fi/LAN test instructions.
+- Updated `README.md` with Android sender MVP notes.
+
+### Verification
+
+- Reviewed Kotlin and Android project files for focused MVP scope.
+- Ran `git diff --check`.
+- Parsed Android XML resources and manifest with PowerShell XML parsing.
+- Confirmed local `gradle` and `kotlinc` commands are not available in this environment.
+- Not built locally because Android Gradle dependencies/SDK sync were not available in this environment.
+- Not tested on a physical Android device.
+
+### Known issues
+
+- The app sends UDP packets, while `adb reverse tcp:8765 tcp:8765` forwards TCP ports; Wi-Fi/LAN testing may be required until a TCP transport is added.
+- ARCore, 6DoF position tracking, binary protocol, smoothing, recording, and release packaging are not implemented.
+- Manual Android Studio sync, device install, sensor validation, and Blender end-to-end testing are still needed.
+
+### Next recommended action
+
+Open `android-app/` in Android Studio, run the app on a physical Android device, and verify packets against the Blender UDP receiver over Wi-Fi/LAN or a future TCP transport.
