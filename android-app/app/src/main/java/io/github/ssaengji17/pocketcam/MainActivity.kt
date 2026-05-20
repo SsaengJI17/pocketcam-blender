@@ -83,7 +83,7 @@ class MainActivity : Activity() {
         hostInput = EditText(this).apply {
             setText(DEFAULT_HOST)
             inputType = InputType.TYPE_CLASS_TEXT
-            singleLine()
+            isSingleLine = true
         }
         content.addView(hostInput)
 
@@ -91,7 +91,7 @@ class MainActivity : Activity() {
         portInput = EditText(this).apply {
             setText(DEFAULT_PORT.toString())
             inputType = InputType.TYPE_CLASS_NUMBER
-            singleLine()
+            isSingleLine = true
         }
         content.addView(portInput)
 
