@@ -152,3 +152,31 @@ Implement the Version 0.2.0 Android Rotation Sender MVP and push it to a new fea
 ### Next recommended action
 
 Open `android-app/` in Android Studio, run the app on a physical Android device, and verify packets against the Blender UDP receiver over Wi-Fi/LAN or a future TCP transport.
+
+---
+
+## 2026-05-20 18:21 KST - Codex
+
+### Request
+
+Fix GitHub issue #3 by replacing unresolved Android Kotlin `singleLine()` calls, verify `assembleDebug`, then commit and push a fix branch.
+
+### Work completed
+
+- Created branch `fix/android-singleline` from `main`.
+- Replaced both `singleLine()` calls with `isSingleLine = true` in `android-app/app/src/main/java/io/github/ssaengji17/pocketcam/MainActivity.kt`.
+- Confirmed GitHub issue #3 describes the Android Kotlin compile failure in `MainActivity.kt`.
+
+### Verification
+
+- Ran `.\gradlew.bat assembleDebug` from `android-app/`.
+- Confirmed `BUILD SUCCESSFUL in 14s`.
+
+### Known issues
+
+- No known issues for this fix.
+- Physical Android device runtime behavior was not tested.
+
+### Next recommended action
+
+- Open a pull request from `fix/android-singleline` into `main` and keep it unmerged until reviewed.
