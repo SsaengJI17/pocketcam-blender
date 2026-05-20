@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/SsaengJI17/pocketcam-blender/protocol/pose-message.schema.json",
+  "title": "PocketCam Pose Message",
+  "description": "Protocol v1 JSON pose packet for PocketCam Blender.",
+  "type": "object",
+  "required": ["type", "version", "rotation"],
+  "properties": {
+    "type": {
+      "const": "pose"
+    },
+    "version": {
+      "const": 1
+    },
+    "timestamp": {
+      "type": "number"
+    },
+    "mode": {
+      "enum": ["rotation", "arcore"]
+    },
+    "position": {
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "minItems": 3,
+      "maxItems": 3
+    },
+    "rotation": {
+      "description": "Quaternion in [x, y, z, w] order.",
+      "type": "array",
+      "prefixItems": [
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" },
+        { "type": "number" }
+      ],
+      "minItems": 4,
+      "maxItems": 4
+    },
+    "fov": {
+      "type": "number"
+    },
+    "tracking": {
+      "enum": ["normal", "limited", "lost"]
+    }
+  },
+  "additionalProperties": true
+}

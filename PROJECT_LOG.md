@@ -76,3 +76,43 @@ Initialize the repository so Codex can understand the project and start implemen
 ### Next recommended action
 
 Ask Codex to implement the Version 0.1.0 Blender receiver MVP described in `docs/codex-instructions.md`.
+
+---
+
+## 2026-05-20 KST - Codex
+
+### Request
+
+Implement the focused Version 0.1.0 Blender Receiver MVP from `AGENTS.md`.
+
+### Work completed
+
+- Added Blender add-on package under `blender-addon/pocketcam_blender/`.
+- Added UDP receiver start/stop support on port `8765`.
+- Added UTF-8 JSON protocol v1 packet parsing for `rotation` in `[x, y, z, w]` order.
+- Added shared state that stores only the latest valid pose.
+- Added Blender timer-based camera rotation application on the main thread.
+- Added 3D View sidebar UI with Start Server and Stop Server controls.
+- Added `scripts/send_test_pose.py` UDP test sender.
+- Added `protocol/pose-message.schema.json`.
+- Added `blender-addon/README.md` and updated `README.md` with install and test instructions.
+
+### Verification
+
+- Ran Python syntax compilation for the add-on modules and test sender.
+- Parsed `protocol/pose-message.schema.json` with `python -m json.tool`.
+- Imported the protocol parser outside Blender and parsed a minimal valid pose packet.
+- Ran a localhost UDP receiver smoke test and confirmed a valid packet updates latest pose state.
+- Ran the test sender once against localhost UDP port `8765`.
+- Blender UI/runtime behavior was not manually tested in Blender.
+
+### Known issues
+
+- Incoming quaternions are treated as Blender-space rotations only.
+- Android/ARCore coordinate conversion is not implemented yet.
+- No Android sender, ARCore support, binary protocol, smoothing, recording, or packaging is included.
+- Manual Blender 4.x validation is still needed.
+
+### Next recommended action
+
+Open Blender 4.x, enable the add-on, start the server from the PocketCam sidebar, and verify camera rotation with `scripts/send_test_pose.py`.
