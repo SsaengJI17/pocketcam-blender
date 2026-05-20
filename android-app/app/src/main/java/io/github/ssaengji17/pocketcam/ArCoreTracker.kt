@@ -4,6 +4,7 @@ import android.app.Activity
 import android.opengl.GLES11Ext
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
+import android.util.Log
 import com.google.ar.core.ArCoreApk
 import com.google.ar.core.Camera
 import com.google.ar.core.Config
@@ -49,6 +50,7 @@ class ArCoreTracker(
     fun start(): Boolean {
         val availability = checkAvailability()
         onStatus(ArCoreStatus(availabilityToLabel(availability), "lost"))
+        Log.d(TAG, "Starting ARCore tracker; availability=${availability.name}")
 
         if (availability.isTransient) {
             onStatus(ArCoreStatus(availabilityToLabel(availability), "lost", "ARCore availability is still checking"))
@@ -80,17 +82,16 @@ class ArCoreTracker(
             arSession.configure(config)
             renderer.session = arSession
             renderer.resetFrameState()
-            arSession.resume()
-            running = true
+            Log.d(TAG, "ARCore session configured; resuming GLSurfaceView before Session.resume")
             surfaceView.onResume()
-            onStatus(ArCoreStatus("available", "limited"))
+            renderer.requestResumeWhenSurfaceReady()
             return true
         } catch (exception: UnavailableException) {
-            onStatus(ArCoreStatus(availabilityToLabel(availability), "lost", exception.message ?: exception.javaClass.simpleName))
+            reportStartupFailure(exception)
         } catch (exception: CameraNotAvailableException) {
-            onStatus(ArCoreStatus(availabilityToLabel(availability), "lost", exception.message ?: exception.javaClass.simpleName))
+            reportStartupFailure(exception)
         } catch (exception: RuntimeException) {
-            onStatus(ArCoreStatus(availabilityToLabel(availability), "lost", exception.message ?: exception.javaClass.simpleName))
+            reportStartupFailure(exception)
         }
 
         running = false
@@ -98,9 +99,15 @@ class ArCoreTracker(
     }
 
     fun stop() {
+        Log.d(TAG, "Stopping ARCore tracker")
         running = false
+        renderer.cancelPendingResume()
         surfaceView.onPause()
-        session?.pause()
+        try {
+            session?.pause()
+        } catch (exception: RuntimeException) {
+            Log.w(TAG, "Ignoring ARCore pause failure", exception)
+        }
         renderer.session = null
         onStatus(ArCoreStatus(availabilityLabel, "lost"))
     }
@@ -113,6 +120,13 @@ class ArCoreTracker(
 
     private fun checkAvailability(): ArCoreApk.Availability {
         return ArCoreApk.getInstance().checkAvailability(activity)
+    }
+
+    private fun reportStartupFailure(exception: Exception) {
+        Log.e(TAG, "ARCore startup failed", exception)
+        running = false
+        renderer.cancelPendingResume()
+        onStatus(ArCoreStatus(availabilityLabel, "lost", SENSOR_ACCESS_ERROR))
     }
 
     private fun availabilityToLabel(availability: ArCoreApk.Availability): String {
@@ -164,6 +178,8 @@ class ArCoreTracker(
         private var viewportWidth = 1
         private var viewportHeight = 1
         private var viewportChanged = false
+        private var surfaceCreated = false
+        private var resumeRequested = false
 
         fun resetFrameState() {
             textureAttached = false
@@ -171,10 +187,25 @@ class ArCoreTracker(
             viewportChanged = true
         }
 
+        fun requestResumeWhenSurfaceReady() {
+            resumeRequested = true
+            Log.d(TAG, "ARCore Session.resume requested; waiting for GLSurfaceView surface")
+            surfaceView.queueEvent {
+                resumeSessionIfSurfaceReady()
+            }
+        }
+
+        fun cancelPendingResume() {
+            resumeRequested = false
+        }
+
         override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
             cameraTextureId = createExternalTexture()
             textureAttached = false
+            surfaceCreated = true
             GLES20.glClearColor(0f, 0f, 0f, 1f)
+            Log.d(TAG, "GLSurfaceView surface created")
+            resumeSessionIfSurfaceReady()
         }
 
         override fun onSurfaceChanged(gl: GL10?, width: Int, height: Int) {
@@ -189,6 +220,7 @@ class ArCoreTracker(
 
             val arSession = session ?: return
             if (!running) {
+                resumeSessionIfSurfaceReady()
                 return
             }
 
@@ -236,5 +268,38 @@ class ArCoreTracker(
             GLES20.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES20.GL_TEXTURE_WRAP_T, GLES20.GL_CLAMP_TO_EDGE)
             return textureIds[0]
         }
+
+        private fun resumeSessionIfSurfaceReady() {
+            if (!resumeRequested || !surfaceCreated) {
+                return
+            }
+
+            val arSession = session ?: return
+
+            try {
+                if (cameraTextureId == 0) {
+                    cameraTextureId = createExternalTexture()
+                    textureAttached = false
+                }
+
+                Log.d(TAG, "Calling ARCore Session.resume after surface creation")
+                arSession.resume()
+                running = true
+                resumeRequested = false
+                onStatus(ArCoreStatus("available", "limited"))
+                Log.d(TAG, "ARCore Session.resume completed")
+            } catch (exception: UnavailableException) {
+                reportStartupFailure(exception)
+            } catch (exception: CameraNotAvailableException) {
+                reportStartupFailure(exception)
+            } catch (exception: RuntimeException) {
+                reportStartupFailure(exception)
+            }
+        }
+    }
+
+    private companion object {
+        private const val TAG = "PocketCamARCore"
+        private const val SENSOR_ACCESS_ERROR = "ARCore failed to access device sensors."
     }
 }

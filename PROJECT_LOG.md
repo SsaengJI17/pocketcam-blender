@@ -218,3 +218,35 @@ Implement Version 0.2.0 ARCore 6DoF MVP on branch `feature/arcore-6dof-mvp`, kee
 ### Next recommended action
 
 - Open a pull request from `feature/arcore-6dof-mvp` into `main`, then test on an ARCore-supported Android device with Blender running.
+
+---
+
+## 2026-05-20 20:42 KST - Codex
+
+### Request
+
+Fix ARCore startup failure from logcat: `Failed to register sensor to queue 0`, likely caused by app-managed sensor listeners conflicting with ARCore sensor registration.
+
+### Work completed
+
+- Refactored `RotationSensorTracker` to create a dedicated `SensorEventListener` on start and unregister plus null it on stop.
+- Added detailed Android logging before and after Rotation Vector Sensor registration/unregistration.
+- Explicitly stop app-managed rotation sensor listeners before starting ARCore mode.
+- Added a short delay before ARCore startup so custom sensor unregistration can settle before `Session.resume()`.
+- Moved ARCore `Session.resume()` so it runs only after the `GLSurfaceView` surface has been created.
+- Added ARCore startup failure reporting with the user-facing message: `ARCore failed to access device sensors.`
+- Kept Rotation Sensor mode behavior intact.
+
+### Verification
+
+- Ran `.\gradlew.bat assembleDebug` from `android-app/`.
+- Confirmed `BUILD SUCCESSFUL in 5s`.
+
+### Known issues
+
+- Physical ARCore device runtime validation is still required to confirm the sensor queue conflict is resolved.
+- `defaultDisplay` deprecation warning remains during Android compile.
+
+### Next recommended action
+
+- Install the debug APK on the ARCore device, switch to ARCore 6DoF mode, and verify logcat no longer reports `Failed to register sensor to queue 0`.

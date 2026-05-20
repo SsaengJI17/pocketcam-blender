@@ -6,7 +6,10 @@ import android.content.pm.PackageManager
 import android.graphics.Typeface
 import android.opengl.GLSurfaceView
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.InputType
+import android.util.Log
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.Button
@@ -46,6 +49,7 @@ class MainActivity : Activity() {
     private var arCoreAvailability = "checking"
     private var arCoreTracking = "lost"
     private var pendingArCoreStart = false
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -87,6 +91,9 @@ class MainActivity : Activity() {
                     arCoreAvailability = status.availability
                     arCoreTracking = status.tracking
                     status.error?.let { lastError = it }
+                    if (status.error == ARCORE_SENSOR_ACCESS_ERROR) {
+                        poseSender.stop()
+                    }
                     updateStatus()
                 }
             },
@@ -284,16 +291,33 @@ class MainActivity : Activity() {
             return
         }
 
+        Log.d(TAG, "Preparing ARCore mode; stopping all app-managed sensors first")
+        sensorTracker.stop()
+        Log.d(TAG, "Rotation sensor stop requested before ARCore startup")
+        arCoreTracker.stop()
+
         packetsSent = 0
         lastError = "None"
         arCoreTracking = "limited"
         poseSender.start(host, port)
-
-        if (!arCoreTracker.start()) {
-            poseSender.stop()
-        }
-
         updateStatus()
+
+        Log.d(TAG, "Delaying ARCore tracker start until app-managed sensors are released")
+        mainHandler.postDelayed(
+            {
+                if (selectedMode != TrackingMode.ARCORE_6DOF || !poseSender.isSending) {
+                    Log.d(TAG, "Skipping delayed ARCore start because mode or sender state changed")
+                    return@postDelayed
+                }
+
+                Log.d(TAG, "Starting ARCore tracker after sensor release delay")
+                if (!arCoreTracker.start()) {
+                    poseSender.stop()
+                }
+                updateStatus()
+            },
+            SENSOR_RELEASE_DELAY_MS,
+        )
     }
 
     private fun stopSending() {
@@ -360,5 +384,8 @@ class MainActivity : Activity() {
         private const val MODE_ROTATION_SENSOR = 1001
         private const val MODE_ARCORE_6DOF = 1002
         private const val CAMERA_PERMISSION_REQUEST = 2001
+        private const val SENSOR_RELEASE_DELAY_MS = 150L
+        private const val TAG = "PocketCamMain"
+        private const val ARCORE_SENSOR_ACCESS_ERROR = "ARCore failed to access device sensors."
     }
 }
