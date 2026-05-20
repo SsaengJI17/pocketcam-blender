@@ -111,6 +111,16 @@ Build an Android app that reads the Rotation Vector Sensor and streams quaternio
 
 This proves that the phone can control Blender camera orientation in real time.
 
+The first Android sender MVP lives in `android-app/`. It is a native Kotlin app that reads the Android Rotation Vector Sensor, converts the sensor quaternion to protocol v1 `[x, y, z, w]` rotation order, and sends UTF-8 JSON packets over UDP. The app defaults to `127.0.0.1:8765` and exposes editable host and port fields.
+
+For the intended USB debugging setup, enable USB debugging and run:
+
+```bash
+adb reverse tcp:8765 tcp:8765
+```
+
+Note: the current sender MVP uses UDP, while `adb reverse` forwards TCP ports. If USB reverse does not carry packets to Blender, test over Wi-Fi/LAN by setting the app host to the computer's local IP address. A TCP transport can be added later without changing the protocol payload.
+
 ### Phase 3: ARCore 6DoF MVP
 
 Add ARCore tracking and stream camera translation plus quaternion rotation.
